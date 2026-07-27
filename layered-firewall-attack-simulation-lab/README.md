@@ -11,6 +11,7 @@ This lab simulates a small enterprise network segment: an external-facing perime
 **Environment:** VMware Workstation, fully isolated host-only virtual network (no bridge to the internet or home network)
 
 **Machines:**
+
 | Role | OS | Purpose |
 |---|---|---|
 | Firewall/Gateway | pfSense 2.8.1-RELEASE | Perimeter firewall, NAT, IDS host |
@@ -39,26 +40,60 @@ This lab simulates a small enterprise network segment: an external-facing perime
                          (192.168.124.0/24)
                                  │
               ┌──────────────────┴──────────────────┐
-              │                                       │
-   ┌──────────▼──────────┐              ┌────────────▼───────────┐
-   │  Kali Linux         │              │  Metasploitable2       │ 
-   │  192.168.124.100    │─── attacks──▶│  192.168.124.101      │
-   │  (Attacker)         │              │  (Target)              │
-   └─────────────────────┘              └────────────────────────┘
+              │                                      │
+   ┌──────────▼──────────┐              ┌────────────▼──────────┐
+   │  Kali Linux         │              │  Metasploitable2      │
+   │  192.168.124.100    │─── attacks──▶│  192.168.124.101     │
+   │  (Attacker)         │              │  (Target)             │
+   └─────────────────────┘              └───────────────────────┘
 ```
+
+---
+
+## Security Architecture (Defense-in-Depth)
+
+| Layer | Control |
+|---|---|
+| Layer 1 | Virtual network isolation using VMware Host-Only networking |
+| Layer 2 | pfSense stateful firewall enforcing traffic policy |
+| Layer 3 | Suricata IDS monitoring LAN traffic |
+| Layer 4 | System logging and alert review |
+| Layer 5 | Controlled attack simulation for validation |
+
+---
+
+## Threat Model
+
+**Attacker Capabilities**
+- Internal network access
+- Network scanning
+- Known exploit execution
+- Reverse shell callbacks
+
+**Assets Protected**
+- Internal hosts
+- Firewall
+- IDS visibility
+- Network segmentation
+
+**Security Goals**
+- Detect reconnaissance activity
+- Prevent uncontrolled lateral movement
+- Observe and log exploit traffic
+- Validate firewall policy effectiveness
 
 ---
 
 ## Part 1 — Network Segmentation & Firewall Build
 
-### What was built
+### What Was Built
 - A dedicated host-only virtual network (VMnet2, `192.168.124.0/24`) with no bridge to the host's real network — the lab cannot leak traffic outside itself
 - pfSense deployed as a two-interface VM: WAN (NAT, for updates/package installs) and LAN (the isolated segment)
 - LAN configured with a static IP and its own DHCP scope so every lab VM gets a predictable address
 - A custom outbound firewall rule (HTTPS, port 443) added and applied through the GUI, on top of the default LAN rules
-- Default admin credentials rotated immediately after first login (documented in the hardening section below — this is a real finding auditors check for)
+- Default admin credentials rotated immediately after first login (a real finding auditors check for)
 
-### Safety hardening applied
+### Safety Hardening Applied
 - VMware Guest Isolation (drag-and-drop, clipboard sharing) disabled on every lab VM
 - Clean-state snapshots taken before any exploitation activity, so the lab can be reset instantly
 - No lab VM ever set to Bridged networking — Host-only only, confirmed on each VM individually
@@ -84,9 +119,9 @@ Suricata was installed as a pfSense package and bound to the LAN interface in ID
 ### Reconnaissance
 An Nmap service-version scan (`nmap -sV`) was run from Kali against the target, identifying 20+ open services including vsftpd 2.3.4, OpenSSH, Samba, MySQL, PostgreSQL, UnrealIRCd, and distccd — each a known, deliberately vulnerable service on Metasploitable2.
 
-**Result:** Suricata logged the scan as an application-layer protocol anomaly against the target's PostgreSQL port within seconds — confirmed via the Alerts log, source/destination/timestamp matching the scan exactly.
+**Result:** Suricata logged the scan as an application-layer protocol anomaly against the target's PostgreSQL port within seconds — confirmed via the Alerts log, with source/destination/timestamp matching the scan exactly.
 
-### Exploitation attempts
+### Exploitation Attempts
 Four Metasploit modules were run against confirmed-vulnerable services:
 
 | Exploit | Service | Result |
@@ -96,10 +131,10 @@ Four Metasploit modules were run against confirmed-vulnerable services:
 | `unix/irc/unreal_ircd_3281_backdoor` | UnrealIRCd | Target confirmed vulnerable during registration handshake; no reverse session established |
 | `unix/misc/distcc_exec` | distccd | Exploit completed; no reverse session established |
 
-### Key finding
+### Key Finding
 Every exploit **confirmed the target was vulnerable** at the service-detection stage. However, reverse-shell **callback connections consistently failed to establish a session** back to the attacker, despite the initial backdoor/exploit trigger succeeding on the target side.
 
-This is the most valuable finding in the lab: it is consistent with the pfSense LAN ruleset **not having an explicit "allow all outbound" rule beyond the default LAN-to-any and the added HTTPS rule** — meaning non-standard outbound ports (like Metasploit's default `4444` handler) were not cleanly traversing the firewall/NAT path in this topology. Rather than treating this as a failure, it was documented as evidence that **firewall policy affects attacker tooling in measurable, reproducible ways** — which is exactly the kind of before/after signal a segmentation project is supposed to produce.
+This is the most valuable finding in the lab: it is consistent with the pfSense LAN ruleset **not having an explicit "allow all outbound" rule beyond the default LAN-to-any and the added HTTPS rule** — meaning non-standard outbound ports (like Metasploit's default `4444` handler) were not cleanly traversing the firewall/NAT path in this topology. Rather than treating this as a failure, it was documented as evidence that **firewall policy affects attacker tooling in measurable, reproducible ways** — exactly the kind of before/after signal a segmentation project is supposed to produce.
 
 **Screenshots:** `10-attack-simulation/`, `11-detection-review/`
 
@@ -118,12 +153,106 @@ This is the most valuable finding in the lab: it is consistent with the pfSense 
 
 ---
 
+## MITRE ATT&CK Mapping
+
+| Activity | Technique |
+|---|---|
+| Port Scanning | T1595 – Active Scanning |
+| Service Enumeration | T1046 – Network Service Discovery |
+| Exploit Delivery | T1190 – Exploit Public-Facing Application |
+| Command Shell Access | T1059 – Command and Scripting Interpreter |
+| Reverse Shell / Callback | T1071 – Application Layer Protocol (Command and Control) |
+
+---
+
+## Project Workflow
+
+```
+Lab Setup
+   ↓
+Firewall Configuration
+   ↓
+Suricata Deployment
+   ↓
+Reconnaissance
+   ↓
+Attack Simulation
+   ↓
+Alert Validation
+   ↓
+Root Cause Analysis
+   ↓
+Recommendations
+```
+
+---
+
+## Metrics
+
+| Metric | Value |
+|---|---|
+| VMs Deployed | 3 |
+| Firewall Rules Configured | 5 |
+| IDS Enabled | Yes |
+| Services Discovered | 22 |
+| Successful Vulnerability Confirmations | 4 |
+| Reverse Shell Sessions Established | 0 |
+| Alerts Generated | 14 |
+| Snapshots Created | 3 |
+
+---
+
 ## What I'd Do Differently / Next Steps
 
 - Add an explicit "allow all outbound, log everything" rule temporarily to isolate whether the callback failures were firewall-side or NAT/topology-side, then re-test with the restrictive ruleset to get a clean before/after comparison
 - Enable the Suricata ET-EXPLOIT and ET-SCAN rule categories (only the default ruleset was active here) and re-run the same attack sequence to measure the increase in detection fidelity
 - Add pfSense logging on the specific rule that's dropping the callback traffic, to get a definitive root cause rather than an inferred one
-- Map each attack stage to MITRE ATT&CK technique IDs (Reconnaissance = T1595, Exploitation for Client Execution = T1203) for a more formal report structure
+- Map each attack stage to additional MITRE ATT&CK technique IDs for a more formal, complete report structure
+
+---
+
+## Learning Objectives
+
+This project was designed to demonstrate practical understanding of:
+
+- Network segmentation using pfSense
+- Stateful firewall configuration
+- IDS deployment with Suricata
+- Safe offensive testing against intentionally vulnerable systems
+- Traffic analysis and alert validation
+- Defensive troubleshooting when exploits fail
+- Security documentation and technical reporting
+
+---
+
+## Skills Demonstrated
+
+- Network Segmentation
+- Firewall Administration
+- IDS Deployment
+- Security Monitoring
+- Threat Detection
+- Vulnerability Assessment
+- Penetration Testing
+- Root Cause Analysis
+- Security Documentation
+- Network Troubleshooting
+
+---
+
+## Technologies
+
+| Category | Technologies |
+|---|---|
+| Virtualization | VMware Workstation |
+| Firewall | pfSense 2.8.1 |
+| IDS | Suricata |
+| Attacker | Kali Linux 2026.1 |
+| Target | Metasploitable2 |
+| Scanning | Nmap |
+| Exploitation | Metasploit Framework |
+| Validation | Netcat |
+| Documentation | Markdown |
 
 ---
 
@@ -145,6 +274,12 @@ This is the most valuable finding in the lab: it is consistent with the pfSense 
 │   ├── 10-attack-simulation/
 │   └── 11-detection-review/
 ```
+
+---
+
+## Conclusion
+
+This project demonstrates the practical implementation of layered network defense within an isolated enterprise-style environment. Beyond deploying security controls, the lab emphasizes validation through controlled offensive testing, analysis of defensive visibility, and investigation of post-exploitation behavior. The documented results reinforce how firewall policy and IDS monitoring work together to influence attacker success and improve network resilience.
 
 ---
 
