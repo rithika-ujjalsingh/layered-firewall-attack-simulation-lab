@@ -56,9 +56,9 @@ The lab was built entirely from scratch: virtual network segmentation, firewall 
                                  │
               ┌──────────────────┴──────────────────┐
               │                                     │
-   ┌──────────▼──────────┐               ┌────────────▼───────────┐
-   │  Kali Linux         │               │  Metasploitable2       │
-   │  192.168.124.100    │─── attacks──▶│  192.168.124.101       │
+   ┌──────────▼──────────┐              ┌────────────▼───────────┐
+   │  Kali Linux         │              │  Metasploitable2       │
+   │  192.168.124.100    │─── attacks──▶│  192.168.124.101      │
    │  (Attacker)         │              │  (Target)              │
    └─────────────────────┘              └────────────────────────┘
 ```
